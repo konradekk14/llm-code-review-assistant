@@ -1,0 +1,41 @@
+# include production requirements
+-r requirements.txt
+
+# development tools
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+pytest-mock==3.12.0
+
+# code quality
+black>=23.11.0
+flake8>=6.1.0
+isort>=5.12.0
+mypy>=1.7.1
+
+# security
+bandit[toml]==1.7.5
+safety>=2.4.0
+
+# development server
+watchfiles==0.21.0
+
+# testing utils
+httpx==0.25.2
+respx==0.20.2
+factory-boy==3.3.0
+
+# documentation
+mkdocs==1.5.3
+mkdocs-material==9.4.8
+
+# env management
+python-dotenv==1.0.0
+
+# jupyter (potential experiments)
+jupyter==1.0.0
+ipykernel==6.26.0
+
+# profiling
+py-spy==0.3.14
+memory-profiler==0.61.0
