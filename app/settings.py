@@ -42,10 +42,11 @@ class Settings(BaseSettings):
     openai_temperature: float = 0.3
 
     # hugging face or local llms
-    huggingface_api_token: Optional[SecretStr] = None
-    llama_hf_model: str = "meta-llama/Llama-2-70b-chat-hf"
-    enable_local_llama: bool = False
-    llama_local_model: str = "meta-llama/Llama-2-7b-chat-hf"
+    hf_api_key: Optional[SecretStr] = None
+    hf_model: str = "meta-llama/Meta-Llama-3-8B-Instruct"
+    hf_temperature: float = 0.2
+    hf_max_tokens: int = 512
+    hf_base_url: Optional[str] = None
 
     # embeddings / vectors 
     embeddings_provider: Literal["openai", "huggingface", "local"] = "openai"
@@ -102,9 +103,9 @@ class Settings(BaseSettings):
 
     def is_openai_configured(self) -> bool:
         return bool(self.openai_api_key)
-
+    
     def is_huggingface_configured(self) -> bool:
-        return bool(self.huggingface_api_token)
+        return bool(self.hf_api_key and self.hf_model)
 
     def require_prod_secrets(self) -> None:
         """

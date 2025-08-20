@@ -1,10 +1,17 @@
-from app.settings import settings
+from __future__ import annotations
+from typing import Any, Dict, List, Optional
 
-# creates prompts for the review, transforms PR data in review requests
+def _get_lb():
+    from app.services.llm.load_balancer import get_load_balancer
+    return get_load_balancer()
 
-# github pr data -> friendly prompt for llm
 class ReviewService:
-    def create_review_prompt(self, pr_details: dict, changed_files: list) -> str:
+    def __init__(self, load_balancer=None):
+        self.load_balancer = load_balancer or _get_lb()
+
+    def create_review_prompt(self, pr_details: Dict[str, Any], changed_files: List[Dict[str, Any]]) -> str:
+        from app.settings import settings  # local import to avoid import-time side effects
+
         files_summary = []
         total_changes = 0
 
@@ -16,15 +23,15 @@ class ReviewService:
 
             patch = file.get('patch', '')
 
-            # if the patch is too large, show summary w/ line count because too big for llm
             if len(patch) < 2000:
                 files_summary.append(f"\n**File: {filename}**\n```diff\n{patch}\n```")
             else:
                 files_summary.append(f"\n**File: {filename}** (Large file - {additions}+ {deletions}- lines)")
 
-        # validate against configured limits in settings
         if total_changes > settings.max_changed_lines_reviewed:
-            files_summary.append(f"\n⚠️ **Warning**: Total changes ({total_changes}) exceed configured limit ({settings.max_changed_lines_reviewed})")
+            files_summary.append(
+                f"\n**Warning**: Total changes ({total_changes}) exceed configured limit ({settings.max_changed_lines_reviewed})"
+            )
 
         files_content = "\n".join(files_summary)
 
@@ -45,3 +52,18 @@ class ReviewService:
             Provide your review in a clear, structured format:"""
 
         return prompt
+
+    async def generate_review(self, pr_details: Dict[str, Any], changed_files: List[Dict[str, Any]], **kwargs) -> Dict[str, Any]:
+        if not self.load_balancer:
+            raise RuntimeError("Load balancer not configured")
+
+        prompt = self.create_review_prompt(pr_details, changed_files)
+        # lb handles health checks, selection, retries, and metadata
+        result = await self.load_balancer.generate_review(prompt, **kwargs)
+        return {
+            "review": result.get("content") or result,
+            "load_balancer": result.get("load_balancer"),
+        }
+
+    def lb_stats(self) -> Dict[str, Any]:
+        return self.load_balancer.get_stats()
