@@ -3,12 +3,15 @@ import re
 from fastapi import HTTPException
 from app.settings import settings
 
+# this file is meant for interacting with the github api
+
 class GitHubService:
     def __init__(self, token: str = None):
         self.token = token or settings.github_token
         self.headers = settings.get_github_headers() if self.token else {}
         self.base_url = settings.github_api_base
 
+    # find owner, repo, and pr number from url
     def parse_pr_url(self, pr_url: str) -> tuple[str, str, int]:
         pattern = r"^https://github\.com/([^/]+)/([^/]+)/pull/(\d+)$"
         match = re.match(pattern, pr_url)
@@ -34,6 +37,7 @@ class GitHubService:
                 raise HTTPException(status_code=resp.status_code, detail=resp.text)
             return resp.json()
 
+    # necessary methods for interacting with the github api
     async def get_pr_files(self, owner: str, repo: str, pr_number: int) -> list:
         return await self._get(f"/repos/{owner}/{repo}/pulls/{pr_number}/files")
 
