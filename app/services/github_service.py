@@ -3,6 +3,8 @@ import re
 from fastapi import HTTPException
 from app.settings import settings
 
+# this file is meant for interacting with the github api
+
 class GitHubService:
     def __init__(self, token: str = None):
         self.token = token or settings.github_token

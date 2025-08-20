@@ -1,76 +1,132 @@
-from pydantic_settings import BaseSettings
-from typing import Optional
-import os
+from __future__ import annotations
 from functools import lru_cache
+from typing import Optional, List, Literal
+from pydantic_settings import BaseSettings
+from pydantic import Field, SecretStr, field_validator
 
 
 class Settings(BaseSettings):
     """Application settings with environment variable support"""
-    
-    # app settings
+
+    # App
     app_name: str = "AI Code Review Assistant"
     version: str = "1.0.0"
+    environment: Literal["development", "staging", "production"] = "development"
     debug: bool = False
-    environment: str = "development"
-    
-    # server settings
+
+    # Server
     host: str = "0.0.0.0"
     port: int = 8000
-    
-    # GitHub config
-    github_token: Optional[str] = None
+    allowed_origins: List[str] = Field(default_factory=lambda: ["*"])  # CORS
+
+    # HTTP/client defaults (centralize timeouts/retries)
+    http_connect_timeout_s: float = 5.0
+    http_read_timeout_s: float = 15.0
+    http_total_timeout_s: float = 20.0
+    http_max_retries: int = 2
+
+    # GitHub (prefer GitHub App; keep PAT for dev)
     github_api_base: str = "https://api.github.com"
-    
-    # OpenAI config
-    openai_api_key: Optional[str] = None
-    openai_model: str = "gpt-4"
+    github_token: Optional[SecretStr] = None  # PAT (dev only)
+    github_app_id: Optional[str] = None
+    github_webhook_secret: Optional[SecretStr] = None
+    github_private_key: Optional[SecretStr] = None  # PEM, handle multiline
+    github_app_installation_id: Optional[str] = None  # optional, for app auth
+
+    # OpenAI / compatible
+    openai_api_key: Optional[SecretStr] = None
+    openai_org: Optional[str] = None
+    openai_base_url: Optional[str] = None  # e.g., Azure/OpenAI-compatible gateway
+    openai_model: str = "gpt-4o-mini"  # keep configurable; override via env
     openai_max_tokens: int = 1500
     openai_temperature: float = 0.3
-    
-    # Hugging Face config
-    huggingface_api_token: Optional[str] = None
+
+    # Hugging Face / local LLMs
+    huggingface_api_token: Optional[SecretStr] = None
     llama_hf_model: str = "meta-llama/Llama-2-70b-chat-hf"
-    
-    # local Llama config
     enable_local_llama: bool = False
     llama_local_model: str = "meta-llama/Llama-2-7b-chat-hf"
-    
-    # logging
+
+    # Embeddings / Vector DB (placeholders you’ll wire soon)
+    embeddings_provider: Literal["openai", "huggingface", "local"] = "openai"
+    embeddings_model: str = "text-embedding-3-large"
+    vectordb_kind: Literal["pgvector", "qdrant"] = "pgvector"
+    vectordb_url: Optional[str] = None          # e.g., postgresql://... or http://qdrant:6333
+    vectordb_collection: str = "repo_context"
+
+    # Queue / background worker
+    queue_kind: Literal["redis"] = "redis"
+    redis_url: Optional[str] = None  # e.g., redis://localhost:6379/0
+
+    # Budgets / limits (helps with cost/rate-limit)
+    max_changed_lines_reviewed: int = 4000
+    max_findings_per_file: int = 20
+    max_concurrent_file_reviews: int = 4
+
+    # Logging/observability
     log_level: str = "INFO"
-    
+    log_json: bool = False
+    sentry_dsn: Optional[str] = None
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
         "case_sensitive": False,
-        "extra": "ignore"
+        "extra": "ignore",
     }
-    
-    # get the github api headers
+
+    # ---- Validators & helpers ----
+
+    @field_validator("allowed_origins", mode="before")
+    @classmethod
+    def split_origins(cls, v):
+        # Allow comma-separated env like: http://localhost:3000,https://your.app
+        if isinstance(v, str):
+            return [s.strip() for s in v.split(",") if s.strip()]
+        return v
+
     def get_github_headers(self) -> dict:
+        """
+        PAT-only helper (dev). For GitHub App, prefer installation tokens via a dedicated service.
+        """
         if not self.github_token:
-            raise ValueError("GitHub token not configured")
+            raise ValueError("GitHub token (PAT) not configured")
         return {
-            "Authorization": f"token {self.github_token}",
+            "Authorization": f"token {self.github_token.get_secret_value()}",
             "Accept": "application/vnd.github.v3+json",
-            "User-Agent": f"{self.app_name}/{self.version}"
+            "User-Agent": f"{self.app_name}/{self.version}",
         }
-    
-    # ensure proper configs
+
+    # Convenience flags
     def is_github_configured(self) -> bool:
-        return bool(self.github_token)
-    
+        return bool(self.github_token or (self.github_app_id and self.github_private_key))
+
     def is_openai_configured(self) -> bool:
         return bool(self.openai_api_key)
-    
+
     def is_huggingface_configured(self) -> bool:
         return bool(self.huggingface_api_token)
+
+    def require_prod_secrets(self) -> None:
+        """
+        Fail-fast guard you can call at startup in production.
+        """
+        if self.environment == "production":
+            missing = []
+            if not self.is_github_configured():
+                missing.append("GitHub App or token")
+            if not self.is_openai_configured():
+                missing.append("OpenAI API key")
+            if not self.allowed_origins or self.allowed_origins == ["*"]:
+                missing.append("CORS allowed_origins")
+            if missing:
+                raise RuntimeError(f"Missing required prod config: {', '.join(missing)}")
 
 
 @lru_cache()
 def get_settings() -> Settings:
-    """Get cached settings instance"""
     return Settings()
 
 
-# global settings instance
+# Keep this for modules expecting a global, but prefer injecting get_settings()
 settings = get_settings()
