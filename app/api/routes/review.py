@@ -21,7 +21,7 @@ async def review_pull_request(
     if not github_service:
         raise HTTPException(status_code=500, detail="GitHub not configured")
 
-    owner, repo, pr_number = await github_service.parse_pr_url(request.pr_url)
+    owner, repo, pr_number = github_service.parse_pr_url(request.pr_url)
     pr_details, changed_files = await github_service.get_pr_details_and_files(owner, repo, pr_number)
 
     if not changed_files:

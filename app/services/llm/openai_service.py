@@ -32,17 +32,18 @@ class OpenAIService:
     def available(self) -> bool:
         return bool(self.api_key)
 
-    # creates HTTP client only when needed (sets up headers and timeouts)
+    # creates HTTP client only when needed w/ auth (sets up headers and timeouts)
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None:
-            headers = {"Authorization": f"Bearer {self.api_key}"}
+            api_key = self.api_key.get_secret_value() if self.api_key else None
+            headers = {"Authorization": f"Bearer {api_key}"}
             if self.org:
                 headers["OpenAI-Organization"] = self.org
             # a single shared client with sane defaults
             self._client = httpx.AsyncClient(
                 base_url=_OPENAI_BASE,
                 headers=headers,
-                timeout=httpx.Timeout(10.0, connect=5.0, read=10.0),
+                timeout=httpx.Timeout(120.0, connect=10.0, read=120.0),
             )
         return self._client
 
@@ -63,12 +64,13 @@ class OpenAIService:
             try:
                 resp = await client.request(method, url, json=json_body)
                 if resp.status_code in (429, 500, 502, 503, 504):
-                    # retryable
-                    retry_after = float(resp.headers.get("retry-after", "0") or 0)
-                    backoff = retry_after if retry_after > 0 else (0.25 * (2 ** attempt)) + random.random() * 0.2
-                    await asyncio.sleep(backoff)
-                    attempt += 1
-                    continue
+                    # log details so you know *what* is failing
+                    try:
+                        body = resp.text
+                    except Exception:
+                        body = "<no-body>"
+                    req_id = resp.headers.get("x-request-id")  # useful for support
+                    print(f"[LLM RETRY] {resp.status_code} on {url} (x-request-id={req_id}) body={body[:1000]}")
                 resp.raise_for_status()
                 return resp
             except httpx.HTTPError as e:
@@ -77,8 +79,10 @@ class OpenAIService:
                     raise
                 await asyncio.sleep(0.25 * (2 ** attempt))
                 attempt += 1
-        assert last_exc
-        raise last_exc
+        if last_exc:
+                raise last_exc
+        else:
+                raise RuntimeError("Request failed after all retries")
 
     # the health check endpoint called by llm_status.py
     async def health_check(self) -> Dict[str, Any]:

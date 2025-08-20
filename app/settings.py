@@ -8,13 +8,13 @@ from pydantic import Field, SecretStr, field_validator
 class Settings(BaseSettings):
     """Application settings with environment variable support"""
 
-    # App
+    # app
     app_name: str = "AI Code Review Assistant"
     version: str = "1.0.0"
     environment: Literal["development", "staging", "production"] = "development"
     debug: bool = False
 
-    # Server
+    # host server
     host: str = "0.0.0.0"
     port: int = 8000
     allowed_origins: List[str] = Field(default_factory=lambda: ["*"])  # CORS
@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     github_private_key: Optional[SecretStr] = None  # PEM, handle multiline
     github_app_installation_id: Optional[str] = None  # optional, for app auth
 
-    # OpenAI / compatible
+    # openai / compatible
     openai_api_key: Optional[SecretStr] = None
     openai_org: Optional[str] = None
     openai_base_url: Optional[str] = None  # e.g., Azure/OpenAI-compatible gateway
@@ -41,29 +41,29 @@ class Settings(BaseSettings):
     openai_max_tokens: int = 1500
     openai_temperature: float = 0.3
 
-    # Hugging Face / local LLMs
+    # hugging face or local llms
     huggingface_api_token: Optional[SecretStr] = None
     llama_hf_model: str = "meta-llama/Llama-2-70b-chat-hf"
     enable_local_llama: bool = False
     llama_local_model: str = "meta-llama/Llama-2-7b-chat-hf"
 
-    # Embeddings / Vector DB (placeholders you’ll wire soon)
+    # embeddings / vectors 
     embeddings_provider: Literal["openai", "huggingface", "local"] = "openai"
     embeddings_model: str = "text-embedding-3-large"
     vectordb_kind: Literal["pgvector", "qdrant"] = "pgvector"
     vectordb_url: Optional[str] = None          # e.g., postgresql://... or http://qdrant:6333
     vectordb_collection: str = "repo_context"
 
-    # Queue / background worker
+    # queue / background worker
     queue_kind: Literal["redis"] = "redis"
     redis_url: Optional[str] = None  # e.g., redis://localhost:6379/0
 
-    # Budgets / limits (helps with cost/rate-limit)
+    # set limits
     max_changed_lines_reviewed: int = 4000
     max_findings_per_file: int = 20
     max_concurrent_file_reviews: int = 4
 
-    # Logging/observability
+    # logging
     log_level: str = "INFO"
     log_json: bool = False
     sentry_dsn: Optional[str] = None
@@ -75,12 +75,11 @@ class Settings(BaseSettings):
         "extra": "ignore",
     }
 
-    # ---- Validators & helpers ----
-
+    # validators so pydantic can convert env vars to python types
     @field_validator("allowed_origins", mode="before")
     @classmethod
     def split_origins(cls, v):
-        # Allow comma-separated env like: http://localhost:3000,https://your.app
+        # allow comma-separated env like: http://localhost:3000,https://your.app
         if isinstance(v, str):
             return [s.strip() for s in v.split(",") if s.strip()]
         return v
@@ -97,7 +96,7 @@ class Settings(BaseSettings):
             "User-Agent": f"{self.app_name}/{self.version}",
         }
 
-    # Convenience flags
+    # convenience flags for maintainable code
     def is_github_configured(self) -> bool:
         return bool(self.github_token or (self.github_app_id and self.github_private_key))
 
@@ -128,5 +127,5 @@ def get_settings() -> Settings:
     return Settings()
 
 
-# Keep this for modules expecting a global, but prefer injecting get_settings()
+# keep this for modules expecting a global, but injecting get_settings() is better
 settings = get_settings()
